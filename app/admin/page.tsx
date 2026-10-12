@@ -1,7 +1,5 @@
 'use client';
 
-export const dynamic = 'force-dynamic';
-
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import {
@@ -23,6 +21,7 @@ import {
   deleteProduct,
   updateOrderStatus,
   seedInitialProductsIfEmpty,
+  syncFullMenuToSupabase,
 } from '@/lib/db-service';
 import { ProductModal } from '@/components/ProductModal';
 import { DigitalReceipt } from '@/components/DigitalReceipt';
@@ -227,21 +226,32 @@ export default function AdminPage() {
     }
   };
 
-  const handleSeedProducts = async () => {
+  const handleSyncFullMenu = async (clearObsolete = false) => {
+    const msg = clearObsolete
+      ? 'Voulez-vous synchroniser et nettoyer la base Supabase pour installer la totalité des 191 articles officiels (Nourriture, Boissons, Liqueurs) ? Les anciens articles de test seront retirés.'
+      : 'Voulez-vous synchroniser les 191 articles de la carte officielle dans Supabase ?';
+
+    if (!window.confirm(msg)) return;
+
     try {
       setSeedingLoading(true);
-      const count = await seedInitialProductsIfEmpty();
-      if (count > 0) {
-        setActionNotice(`${count} articles ont été initialisés dans la base Supabase.`);
+      const res = await syncFullMenuToSupabase({ clearObsolete });
+      if (res.error) {
+        setActionNotice(`Erreur de synchronisation : ${res.error}`);
       } else {
-        setActionNotice('La base de données contient déjà des articles.');
+        setActionNotice(`Succès : ${res.count} articles de la carte officielle ont été synchronisés dans Supabase !`);
       }
-      setTimeout(() => setActionNotice(null), 4000);
+      setTimeout(() => setActionNotice(null), 5000);
     } catch (err) {
-      console.error('Erreur d’initialisation:', err);
+      console.error('Erreur synchronisation:', err);
+      setActionNotice('Échec de la synchronisation avec Supabase.');
     } finally {
       setSeedingLoading(false);
     }
+  };
+
+  const handleSeedProducts = async () => {
+    await handleSyncFullMenu(false);
   };
 
   // Filter products
@@ -563,18 +573,17 @@ export default function AdminPage() {
           </div>
 
           {activeTab === 'products' && (
-            <div className="flex items-center gap-2.5">
-              {products.length === 0 && (
-                <button
-                  type="button"
-                  onClick={handleSeedProducts}
-                  disabled={seedingLoading}
-                  className="inline-flex items-center gap-1.5 rounded-xl border border-[#D4AF37]/50 bg-[#D4AF37]/10 hover:bg-[#D4AF37]/20 px-3.5 py-2 text-xs font-semibold text-[#D4AF37] transition-colors"
-                >
-                  <RefreshCw className={`h-3.5 w-3.5 ${seedingLoading ? 'animate-spin' : ''}`} />
-                  <span>Peupler avec la carte par défaut</span>
-                </button>
-              )}
+            <div className="flex items-center gap-2.5 flex-wrap">
+              <button
+                type="button"
+                onClick={() => handleSyncFullMenu(true)}
+                disabled={seedingLoading}
+                className="inline-flex items-center gap-1.5 rounded-xl border border-[#D4AF37]/50 bg-[#D4AF37]/10 hover:bg-[#D4AF37]/25 px-3.5 py-2 text-xs font-semibold text-[#D4AF37] transition-all hover:scale-[1.02] active:scale-[0.98]"
+                title="Insère et actualise l'ensemble des 191 articles (Nourriture, Boissons, Liqueurs) dans Supabase"
+              >
+                <RefreshCw className={`h-3.5 w-3.5 ${seedingLoading ? 'animate-spin' : ''}`} />
+                <span>Synchroniser la carte complète (191 articles)</span>
+              </button>
 
               <button
                 id="btn-add-product"
