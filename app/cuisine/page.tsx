@@ -1,7 +1,5 @@
 'use client';
 
-export const dynamic = 'force-dynamic';
-
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import Link from 'next/link';
 import {
@@ -48,7 +46,7 @@ import {
 // CONFIGURATION & CONSTANTS
 // ============================================================================
 type KitchenTab = 'pending' | 'preparing' | 'ready' | 'all';
-type StockCategory = 'all' | 'grill' | 'cafe' | 'bar' | 'dessert';
+type StockCategory = string;
 
 interface StatusDisplayConfig {
   label: string;
@@ -213,7 +211,8 @@ export default function CuisinePage() {
     const map = new Map<string, Product>();
     for (const p of products) {
       if (p.id) map.set(p.id, p);
-      map.set(p.nom.toLowerCase(), p);
+      const nameKey = String(p.nom || p.name || '').toLowerCase();
+      if (nameKey) map.set(nameKey, p);
     }
     return map;
   }, [products]);
@@ -229,7 +228,8 @@ export default function CuisinePage() {
     const query = stockSearchQuery.trim().toLowerCase();
     return products.filter((p) => {
       const matchCat = stockCategoryFilter === 'all' || p.categorie === stockCategoryFilter;
-      const matchQuery = !query || p.nom.toLowerCase().includes(query);
+      const prodName = String(p.nom || p.name || '').toLowerCase();
+      const matchQuery = !query || prodName.includes(query);
       return matchCat && matchQuery;
     });
   }, [products, stockCategoryFilter, stockSearchQuery]);
@@ -467,19 +467,25 @@ export default function CuisinePage() {
         sampleDishes.length > 0
           ? sampleDishes.map((p) => ({
               id: p.id || p.nom,
-              nom: p.nom,
-              prix: p.prix,
+              nom: p.name || p.nom,
+              name: p.name || p.nom,
+              prix: p.price !== undefined ? p.price : p.prix,
+              price: p.price !== undefined ? p.price : p.prix,
               quantity: 2,
-              categorie: p.categorie,
+              categorie: p.category_id || p.categorie,
+              category_id: p.category_id || p.categorie,
               notes: 'Cuisson saignante, sans piment',
             }))
           : [
               {
                 id: 'test-picanha',
                 nom: 'Picanha Braisée au Feu de Bois',
-                prix: 28.5,
+                name: 'Picanha Braisée au Feu de Bois',
+                prix: 9500,
+                price: 9500,
                 quantity: 2,
-                categorie: 'grill',
+                categorie: 'viandes-rouges',
+                category_id: 'viandes-rouges',
                 notes: 'Frites maison, sel noir fumé',
               },
             ];
@@ -489,15 +495,16 @@ export default function CuisinePage() {
 
       await createOrder({
         customerName: `Client Salle ${Math.floor(Math.random() * 90 + 10)}`,
-        customerPhone: '06 12 34 56 78',
-        customerEmail: 'client@times.fr',
+        customerPhone: '+229 01 69 69 86 86',
+        customerEmail: 'client@times-cafebargrill.bj',
         consumptionMode: randomMode,
         tableNumber: randomMode === 'sur_place' ? `Table ${Math.floor(Math.random() * 12 + 1)}` : undefined,
         tableOrRoom: randomMode === 'sur_place' ? `Table ${Math.floor(Math.random() * 12 + 1)}` : undefined,
         pickupTime: randomMode === 'a_emporter' ? 'Dans 15 minutes' : undefined,
-        deliveryAddress: randomMode === 'livraison' ? '12 rue du Port, Bât B' : undefined,
+        deliveryAddress: randomMode === 'livraison' ? 'PK6 Akpakpa Le Belier, Cotonou' : undefined,
+        deliveryCity: randomMode === 'livraison' ? 'Cotonou' : undefined,
         items: testItems,
-        total: testItems.reduce((acc, it) => acc + it.prix * it.quantity, 0),
+        total: testItems.reduce((acc, it) => acc + (it.price !== undefined ? it.price : it.prix) * it.quantity, 0),
         status: 'Commande en cours',
         notes: 'Commande test envoyée au passe cuisine',
         createdAt: new Date().toISOString(),
@@ -998,7 +1005,8 @@ export default function CuisinePage() {
                   {/* Items list */}
                   <div className="p-4 space-y-2.5 flex-1 overflow-y-auto max-h-72">
                     {order.items.map((item, idx) => {
-                      const matchedProduct = productsMap.get(item.id || item.nom.toLowerCase());
+                      const itemName = item.name || item.nom || 'Article';
+                      const matchedProduct = productsMap.get(item.id || itemName.toLowerCase());
                       const isItemOutOfStock = matchedProduct ? matchedProduct.dispo === false : false;
 
                       return (
@@ -1012,7 +1020,7 @@ export default function CuisinePage() {
                             </span>
                             <div>
                               <div className="text-sm font-bold text-white flex items-center gap-1.5 flex-wrap">
-                                <span>{item.nom}</span>
+                                <span>{itemName}</span>
                                 {isItemOutOfStock && (
                                   <span className="px-1.5 py-0.2 rounded bg-red-950 text-red-400 text-[9px] font-bold border border-red-500/50">
                                     Épuisé au stock
@@ -1026,7 +1034,7 @@ export default function CuisinePage() {
                               )}
                               {matchedProduct?.tag && (
                                 <span className="text-[10px] text-zinc-400 uppercase font-mono">
-                                  [{matchedProduct.tag}]
+                                  [{Array.isArray(matchedProduct.tag) ? matchedProduct.tag.join(', ') : matchedProduct.tag}]
                                 </span>
                               )}
                             </div>
@@ -1147,18 +1155,28 @@ export default function CuisinePage() {
                 />
               </div>
 
-              <div className="flex items-center gap-2 overflow-x-auto pb-1 text-xs">
-                {(['all', 'grill', 'cafe', 'bar', 'dessert'] as const).map((cat) => (
+              <div className="flex items-center gap-2 overflow-x-auto pb-1 text-xs scrollbar-thin">
+                <button
+                  onClick={() => setStockCategoryFilter('all')}
+                  className={`px-3 py-1 rounded-lg font-medium transition-colors shrink-0 ${
+                    stockCategoryFilter === 'all'
+                      ? 'bg-[#7D0A1C] text-white border border-[#D4AF37]'
+                      : 'bg-white/5 text-zinc-400 hover:text-white'
+                  }`}
+                >
+                  Tous ({products.length})
+                </button>
+                {Array.from(new Set(products.map((p) => p.categorie))).map((cat) => (
                   <button
                     key={cat}
                     onClick={() => setStockCategoryFilter(cat)}
-                    className={`px-3 py-1 rounded-lg capitalize font-medium transition-colors ${
+                    className={`px-3 py-1 rounded-lg capitalize font-medium transition-colors shrink-0 ${
                       stockCategoryFilter === cat
                         ? 'bg-[#7D0A1C] text-white border border-[#D4AF37]'
                         : 'bg-white/5 text-zinc-400 hover:text-white'
                     }`}
                   >
-                    {cat === 'all' ? 'Tous les articles' : cat}
+                    {cat} ({products.filter((p) => p.categorie === cat).length})
                   </button>
                 ))}
               </div>
